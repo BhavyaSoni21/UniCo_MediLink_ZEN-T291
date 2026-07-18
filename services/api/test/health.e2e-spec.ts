@@ -4,7 +4,10 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { StorageService } from '../src/storage/storage.service';
+import { TOKEN_VERIFIER } from '../src/auth/token-verifier';
 import { createMockPrismaService } from './mock-prisma';
+import { createMockStorageService } from './mock-storage';
 
 describe('HealthController (e2e)', () => {
   let app: INestApplication<App>;
@@ -15,6 +18,10 @@ describe('HealthController (e2e)', () => {
     })
       .overrideProvider(PrismaService)
       .useValue(createMockPrismaService())
+      .overrideProvider(StorageService)
+      .useValue(createMockStorageService())
+      .overrideProvider(TOKEN_VERIFIER)
+      .useValue({ verify: jest.fn(), sign: jest.fn() })
       .compile();
 
     app = moduleFixture.createNestApplication();

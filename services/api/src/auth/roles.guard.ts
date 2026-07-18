@@ -31,7 +31,11 @@ export class RolesGuard implements CanActivate {
       include: { roles: true },
     });
 
-    if (!user || !requiredRoles.includes(user.roles.role_name as UserRole)) {
+    if (
+      !user ||
+      !user.roles ||
+      !requiredRoles.includes(user.roles.role_name as UserRole)
+    ) {
       throw new ForbiddenException('Insufficient role for this action');
     }
 

@@ -10,9 +10,10 @@ This repo is being built in phases (see `docs/plan-the-entire-project-quiet-zebr
 |-------|--------|---------------|
 | **Phase 0 – Project setup & infra** | ✅ Done | Monorepo scaffold (`apps/web-portal`, `services/api`, `services/ai-service`, `packages/shared-types`), Docker Compose, CI |
 | **Phase 1 – Auth & identity** | ✅ Done | Registration/login (Neon Auth), email OTP verification, JWT-verified RBAC on the backend, role-selection dashboard |
-| **Phases 2–12** (records, triage, hospital intelligence, appointments, pharmacy, vitals, dashboards, admin) | ⏳ Not started | See the plan doc |
+| **Phase 2 – Patient profile & medical records** | ✅ Done | Patient profile (demographics, address, emergency contacts, insurance, photo), medical history/allergies/medications, longitudinal timeline, medical report upload to MinIO with simulated OCR, consent grant/revoke (all-records or single-record scope), access audit log, `/profile` and `/records` pages in the Neo-Brutalist design system |
+| **Phases 3–12** (triage, hospital intelligence, appointments, pharmacy, vitals, dashboards, admin) | ⏳ Not started | See the plan doc |
 
-**What you can actually demo right now:** register → verify email (OTP) → log in → pick a role on the dashboard. The rest of the "Demo Flow" and "Features" sections below describe the target end state, not what's runnable today.
+**What you can actually demo right now:** register → verify email (OTP) → log in → pick the patient role on the dashboard → fill in your profile at `/profile` → upload and share a medical report at `/records`. The rest of the "Demo Flow" and "Features" sections below describe the target end state, not what's runnable today.
 
 One architectural deviation from the original plan worth knowing: **auth uses [Neon Auth](https://neon.com/docs/auth/overview)** (Neon's managed identity/credentials service) rather than a hand-rolled NestJS JWT auth service. Neon Auth owns registration, login, sessions, and email verification; our own Postgres `users`/`roles` tables only hold MediLink-domain data (role assignment) keyed by Neon Auth's external user id, and the NestJS API verifies bearer tokens against Neon Auth's JWKS endpoint for RBAC.
 
@@ -47,8 +48,8 @@ All components are containerized and can be spun up with a single `docker compos
 | Module | Key Capabilities | Status |
 |--------|------------------|--------|
 | **Auth & Identity** | Email registration + OTP email verification (Neon Auth), JWT-verified RBAC | ✅ |
-| **Patient Profile** | Demographic info, medical history, allergies, medications, uploaded reports | ⏳ |
-| **Medical Records & Consent** | Upload PDF/PNG, OCR extraction, tagging, secure share links, access audit logs | ⏳ |
+| **Patient Profile** | Demographic info, medical history, allergies, medications, uploaded reports | ✅ |
+| **Medical Records & Consent** | Upload PDF/PNG, simulated OCR extraction, secure share links, access audit logs | ✅ |
 | **AI Risk Prediction** | Symptom + vitals entry → risk score, urgency band, red‑flag markers | ⏳ |
 | **AI Hospital Intelligence Engine** | Weighted scoring (specialty, ETA, bed/doctor availability, queue, reliability, insurance) → ranked hospital recommendations with explanations | ⏳ |
 | **Appointment Booking** | Slot availability, booking, rescheduling, cancellation, queue token | ⏳ |
@@ -73,7 +74,7 @@ All components are containerized and can be spun up with a single `docker compos
 | **Email delivery** | [Resend](https://resend.com), invoked via Neon Auth's `send.otp`/`send.magic_link` webhooks (Neon's own shared sender has unreliable deliverability) |
 | **Database** | Neon PostgreSQL (cloud-hosted; no local Postgres container) via Prisma |
 | **Cache / PubSub** | Redis |
-| **Object Storage** | MinIO (S3‑compatible) – for uploaded reports (not yet wired up) |
+| **Object Storage** | MinIO (S3‑compatible) – patient report uploads, keyed under `patients/<patientId>/<recordId>/…`, accessed via short-lived presigned URLs |
 | **Realtime** | Socket.IO (WebSocket) + Redis Pub/Sub (not yet implemented) |
 | **Maps / ETA** | Google Maps API (or OpenStreetMap + OSRM) (not yet implemented) |
 | **DevOps** | Docker + Docker‑Compose (local) → optional Kubernetes |
@@ -182,10 +183,12 @@ The tunnel URL changes every time it restarts (free/anonymous `cloudflared` tunn
 2. **Register** at `/register` with an email + password. You'll be prompted for a 6-digit code.
 3. **Check your email** for the code (see step 6 above to get this actually delivered) and enter it to verify.
 4. **Log in** at `/login`.
-5. You'll land on `/dashboard` — since this is your first login, you'll be asked to pick a role (patient/doctor/hospital/admin). This calls the NestJS backend's `/api/v1/auth/complete-profile`, which JIT-provisions your profile in Postgres.
+5. You'll land on `/dashboard` — since this is your first login, you'll be asked to pick a role (patient/doctor/hospital/admin). This calls the NestJS backend's `/api/v1/auth/complete-profile`, which JIT-provisions your profile in Postgres (and, if you picked **patient**, a `patients` row too).
 6. Reload `/dashboard` — you'll now see your email, role, and account status, fetched from `/api/v1/auth/me` with a JWT verified against Neon Auth's JWKS.
+7. As a patient, visit **`/profile`** — fill in demographics, address, emergency contacts, insurance, a profile photo, medical history, allergies, and medications. Everything persists via the NestJS API.
+8. Visit **`/records`** — drag a PDF/PNG onto the upload zone (simulated OCR text is generated automatically), then use **Share** on a record or the **Consent & Sharing** panel to grant another account (paste its user id) access, and **Revoke** to take it back. The access audit trail is recorded server-side on every view.
 
-Everything past this (patient records, triage, hospital recommendations, appointments, pharmacy, etc.) is not built yet — see [Project Status](#-project-status).
+Everything past this (triage, hospital recommendations, appointments, pharmacy, etc.) is not built yet — see [Project Status](#-project-status).
 
 ## 🛠️ Development Tips
 - **Backend hot‑reload:** `npm run dev:api` from repo root, or `npm run start:dev` inside `services/api`.

@@ -4,8 +4,10 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { StorageService } from '../src/storage/storage.service';
 import { TOKEN_VERIFIER } from '../src/auth/token-verifier';
 import { createMockPrismaService } from './mock-prisma';
+import { createMockStorageService } from './mock-storage';
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication<App>;
@@ -26,6 +28,8 @@ describe('AuthController (e2e)', () => {
       .useValue(mockPrisma)
       .overrideProvider(TOKEN_VERIFIER)
       .useValue(fakeVerifier)
+      .overrideProvider(StorageService)
+      .useValue(createMockStorageService())
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -61,7 +65,7 @@ describe('AuthController (e2e)', () => {
         .expect(400);
     });
 
-    it('upserts the local user with the resolved role id', async () => {
+    it('updates the local user with the resolved role id', async () => {
       fakeVerifier.verify.mockResolvedValue({
         sub: 'user-1',
         email: 'a@example.com',
@@ -70,7 +74,7 @@ describe('AuthController (e2e)', () => {
         id: 1,
         role_name: 'patient',
       });
-      mockPrisma.users.upsert.mockResolvedValue({
+      mockPrisma.users.update.mockResolvedValue({
         id: 'user-1',
         email: 'a@example.com',
         account_status: 'ACTIVE',
@@ -89,10 +93,16 @@ describe('AuthController (e2e)', () => {
         email: 'a@example.com',
         role: 'patient',
       });
-      expect(mockPrisma.users.upsert).toHaveBeenCalledWith(
+      expect(mockPrisma.patients.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { user_id: 'user-1' },
+          create: expect.objectContaining({ user_id: 'user-1' }),
+        }),
+      );
+      expect(mockPrisma.users.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'user-1' },
-          create: expect.objectContaining({ id: 'user-1', role_id: 1 }),
+          data: expect.objectContaining({ role_id: 1 }),
         }),
       );
     });

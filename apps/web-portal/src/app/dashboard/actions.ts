@@ -1,10 +1,12 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
-import { auth } from '@/lib/auth/server';
+import { cookies } from 'next/headers';
+
+const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000/api/v1';
 
 export interface CompleteProfileState {
   error?: string;
+  success?: boolean;
 }
 
 export async function completeProfile(
@@ -12,34 +14,29 @@ export async function completeProfile(
   formData: FormData,
 ): Promise<CompleteProfileState> {
   try {
-    const { data, error: tokenError } = await auth.token();
-    if (tokenError || !data?.token) {
-      console.error('completeProfile: auth.token() failed', tokenError);
+    const c = await cookies();
+    const token = c.get('session_token')?.value;
+    if (!token) {
       return { error: 'Your session has expired — please log in again.' };
     }
 
-    const url = `${process.env.API_BASE_URL}/auth/complete-profile`;
-    console.log('completeProfile: POSTing to', url);
-
+    const url = `${API_BASE_URL}/auth/complete-profile`;
     const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${data.token}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ role: formData.get('role') }),
     });
 
     if (!res.ok) {
       const body = (await res.json().catch(() => null)) as { message?: string } | null;
-      console.error('completeProfile: backend rejected', res.status, body);
       return { error: body?.message || `Could not save your role (${res.status})` };
     }
 
-    revalidatePath('/dashboard');
-    return {};
+    return { success: true };
   } catch (err) {
-    console.error('completeProfile: unexpected error', err);
     return { error: err instanceof Error ? err.message : 'Unexpected error saving your role' };
   }
 }

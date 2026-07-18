@@ -1,27 +1,36 @@
 'use server';
 
-import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
 import { auth } from '@/lib/auth/server';
 
 export interface LoginState {
   error?: string;
+  success?: boolean;
 }
 
 export async function signInWithEmail(
   _prevState: LoginState | null,
   formData: FormData,
 ): Promise<LoginState> {
-  const { error } = await auth.signIn.email({
+  const { data, error } = await auth.signInEmail({
     email: formData.get('email') as string,
     password: formData.get('password') as string,
   });
 
   if (error) {
-    if (error.code === 'EMAIL_NOT_VERIFIED') {
-      return { error: 'Please verify your email before logging in — check your inbox.' };
-    }
     return { error: error.message || 'Login failed' };
   }
 
-  redirect('/dashboard');
+  if (data?.token) {
+    const c = await cookies();
+    c.set('session_token', data.token, {
+      httpOnly: true,
+      secure: false,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60,
+    });
+  }
+
+  return { success: true };
 }

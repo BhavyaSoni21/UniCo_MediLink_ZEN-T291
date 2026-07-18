@@ -3,7 +3,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
 import { RolesGuard } from './roles.guard';
-import { NeonJwksTokenVerifier, TOKEN_VERIFIER } from './token-verifier';
+import { LocalTokenVerifier, TOKEN_VERIFIER } from './token-verifier';
 
 @Module({
   controllers: [AuthController],
@@ -11,7 +11,7 @@ import { NeonJwksTokenVerifier, TOKEN_VERIFIER } from './token-verifier';
     AuthService,
     AuthGuard,
     RolesGuard,
-    { provide: TOKEN_VERIFIER, useClass: NeonJwksTokenVerifier },
+    { provide: TOKEN_VERIFIER, useClass: LocalTokenVerifier },
   ],
   exports: [AuthGuard, RolesGuard, TOKEN_VERIFIER],
 })

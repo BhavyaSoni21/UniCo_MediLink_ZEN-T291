@@ -10,6 +10,21 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Neo-Brutalist design system tokens */
+  --color-brand-yellow: #ffe17c;
+  --color-brand-charcoal: #171e19;
+  --color-brand-sage: #b7c6c2;
+  --color-brand-teal: #0ea5a4;
+  --color-brand-danger: #e5484d;
+
+  --font-display: "Cabinet Grotesk", "Inter", system-ui, sans-serif;
+  --font-body: "Satoshi", "Inter", system-ui, sans-serif;
+
+  --radius-brutal: 12px;
+  --shadow-brutal: 4px 4px 0px 0px #000000;
+  --shadow-brutal-lg: 8px 8px 0px 0px #000000;
+  --shadow-brutal-press: 2px 2px 0px 0px #000000;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -23,4 +38,60 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer components {
+  .brutal-card {
+    @apply bg-white border-2 border-black rounded-brutal shadow-brutal;
+  }
+  .brutal-card-lg {
+    @apply bg-white border-2 border-black rounded-brutal shadow-brutal-lg;
+  }
+
+  .brutal-btn {
+    @apply inline-flex items-center justify-center gap-2 border-2 border-black
+           rounded-brutal font-display font-extrabold px-6 py-3
+           transition-transform duration-100;
+    box-shadow: 8px 8px 0 #000;
+  }
+  .brutal-btn:hover {
+    transform: translate(4px, 4px);
+    box-shadow: 4px 4px 0 #000;
+  }
+  .brutal-btn:active {
+    transform: translate(6px, 6px);
+    box-shadow: 2px 2px 0 #000;
+  }
+
+  .brutal-btn-primary {
+    @apply bg-black text-brand-yellow;
+  }
+  .brutal-btn-yellow {
+    @apply bg-brand-yellow text-black;
+  }
+
+  .brutal-input {
+    @apply w-full bg-white border-2 border-black rounded-brutal px-4 py-3
+           font-body outline-none focus:shadow-brutal;
+  }
+
+  .brutal-badge {
+    @apply inline-flex items-center gap-1 border-2 border-black rounded-full
+           px-3 py-1 text-xs font-bold;
+  }
+}
+
+/* Radial dot pattern for yellow backgrounds: 32px spacing, 10% opacity */
+.dot-pattern {
+  background-image: radial-gradient(rgba(0, 0, 0, 0.1) 2px, transparent 2px);
+  background-size: 32px 32px;
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
 }

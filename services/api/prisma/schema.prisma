@@ -12,6 +12,8 @@ model doctor_specializations {
   id                  Int     @id @default(autoincrement()) @db.SmallInt
   specialization_name String  @unique @db.VarChar(100)
   description         String?
+
+  hospital_specialties hospital_specialties[]
 }
 
 model medicines {
@@ -47,27 +49,375 @@ model system_configuration {
   updated_at   DateTime? @default(now()) @db.Timestamptz(6)
 }
 
-// id is Neon Auth's external user id (JWT `sub` claim) rather than a
-// self-generated UUID: Neon Auth owns identity/credentials, this table only
-// holds MediLink-domain data and is JIT-provisioned via /auth/complete-profile
-// on first authenticated request.
 model users {
-  id                String              @id @db.Uuid
-  role_id           Int                 @db.SmallInt
-  email             String?             @unique @db.VarChar(255)
-  phone             String?             @unique @db.VarChar(20)
-  is_email_verified Boolean             @default(false)
-  is_phone_verified Boolean             @default(false)
-  account_status    account_status_enum @default(ACTIVE)
-  last_login        DateTime?           @db.Timestamptz(6)
-  created_at        DateTime            @default(now()) @db.Timestamptz(6)
-  updated_at        DateTime            @default(now()) @db.Timestamptz(6)
-  roles             roles               @relation(fields: [role_id], references: [id], map: "fk_user_role")
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  role_id            Int?                 @db.SmallInt
+  email              String?              @unique @db.VarChar(255)
+  phone              String?              @unique @db.VarChar(20)
+  name               String?              @db.VarChar(255)
+  password_hash      String?              @db.VarChar(255)
+  is_email_verified  Boolean              @default(false)
+  is_phone_verified  Boolean              @default(false)
+  account_status     account_status_enum  @default(ACTIVE)
+  last_login         DateTime?            @db.Timestamptz(6)
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime             @default(now()) @db.Timestamptz(6)
+  // Null until the post-login role-selection step (RoleForm) runs — that's
+  // the signal the dashboard/RolesGuard use to tell "no role chosen yet"
+  // apart from "role explicitly set". Don't default this at sign-up.
+  roles              roles?               @relation(fields: [role_id], references: [id], map: "fk_user_role")
+  patients           patients?
+  record_access_logs record_access_logs[]
 
   @@index([email], map: "idx_users_email")
   @@index([phone], map: "idx_users_phone")
   @@index([role_id], map: "idx_users_role")
   @@index([account_status], map: "idx_users_status")
+}
+
+// --- Patient Management (Phase 2) ---------------------------------------
+
+model patients {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id           String            @unique @db.Uuid
+  first_name        String?           @db.VarChar(100)
+  last_name         String?           @db.VarChar(100)
+  date_of_birth     DateTime?         @db.Date
+  gender            gender_enum?
+  blood_group       blood_group_enum? @default(UNKNOWN)
+  height_cm         Decimal?          @db.Decimal(5, 2)
+  weight_kg         Decimal?          @db.Decimal(5, 2)
+  profile_photo_key String?           @db.VarChar(500)
+  created_at        DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime          @default(now()) @updatedAt @db.Timestamptz(6)
+
+  users              users                @relation(fields: [user_id], references: [id], map: "fk_patient_user")
+  address            addresses?
+  emergency_contacts emergency_contacts[]
+  medical_conditions medical_conditions[]
+  allergies          allergies[]
+  medications        medications[]
+  insurances         insurances[]
+  medical_records    medical_records[]
+  consents           consents[]
+  triage_sessions          triage_sessions[]
+  vitals_readings          vitals_readings[]
+  hospital_recommendations hospital_recommendations[]
+
+  @@index([user_id], map: "idx_patients_user")
+}
+
+model addresses {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patient_id     String   @unique @db.Uuid
+  address_line_1 String   @db.VarChar(255)
+  address_line_2 String?  @db.VarChar(255)
+  city           String?  @db.VarChar(100)
+  state          String?  @db.VarChar(100)
+  country        String?  @db.VarChar(100)
+  pincode        String?  @db.VarChar(20)
+  latitude       Decimal? @db.Decimal(9, 6)
+  longitude      Decimal? @db.Decimal(9, 6)
+
+  patients patients @relation(fields: [patient_id], references: [id], map: "fk_address_patient")
+}
+
+model emergency_contacts {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patient_id   String  @db.Uuid
+  name         String  @db.VarChar(150)
+  relationship String? @db.VarChar(50)
+  phone        String  @db.VarChar(20)
+  email        String? @db.VarChar(255)
+
+  patients patients @relation(fields: [patient_id], references: [id], map: "fk_emergency_contact_patient")
+
+  @@index([patient_id], map: "idx_emergency_contacts_patient")
+}
+
+model medical_conditions {
+  id             String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patient_id     String                @db.Uuid
+  condition_name String                @db.VarChar(255)
+  diagnosis_date DateTime?             @db.Date
+  status         condition_status_enum @default(ACTIVE)
+  notes          String?
+  created_at     DateTime              @default(now()) @db.Timestamptz(6)
+
+  patients patients @relation(fields: [patient_id], references: [id], map: "fk_condition_patient")
+
+  @@index([patient_id], map: "idx_medical_conditions_patient")
+}
+
+model allergies {
+  id           String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patient_id   String                @db.Uuid
+  allergy_name String                @db.VarChar(255)
+  severity     allergy_severity_enum @default(UNKNOWN)
+  reaction     String?
+  created_at   DateTime              @default(now()) @db.Timestamptz(6)
+
+  patients patients @relation(fields: [patient_id], references: [id], map: "fk_allergy_patient")
+
+  @@index([patient_id], map: "idx_allergies_patient")
+}
+
+model medications {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patient_id    String    @db.Uuid
+  medicine_name String    @db.VarChar(255)
+  dosage        String?   @db.VarChar(100)
+  frequency     String?   @db.VarChar(100)
+  start_date    DateTime? @db.Date
+  end_date      DateTime? @db.Date
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+
+  patients patients @relation(fields: [patient_id], references: [id], map: "fk_medication_patient")
+
+  @@index([patient_id], map: "idx_medications_patient")
+}
+
+model insurances {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patient_id    String    @db.Uuid
+  provider_name String    @db.VarChar(255)
+  policy_number String    @db.VarChar(100)
+  coverage_type String?   @db.VarChar(100)
+  valid_until   DateTime? @db.Date
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+
+  patients patients @relation(fields: [patient_id], references: [id], map: "fk_insurance_patient")
+
+  @@index([patient_id], map: "idx_insurances_patient")
+}
+
+// --- Medical Records & Consent (Phase 2) ---------------------------------
+//
+// medical_records.doctor_id and consents.granted_to_id intentionally have no
+// FK constraint: they reference a users.id (a doctor/hospital/pharmacy-role
+// account), since dedicated Doctor/Hospital entities don't exist until later
+// phases. Prescription/PrescriptionMedicine/LabReport are deferred for the
+// same reason — they're doctor-authored artifacts with no producing workflow
+// yet.
+//
+// medical_records is soft-deleted (deleted_at), matching the codebase's
+// existing account_status_enum.DELETED convention for users — a hard DELETE
+// would cascade onto record_access_logs and wipe the very audit trail that's
+// supposed to survive record removal.
+
+model medical_records {
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patient_id  String           @db.Uuid
+  doctor_id   String?          @db.Uuid
+  record_type record_type_enum @default(CONSULTATION)
+  visit_date  DateTime?        @db.Date
+  summary     String?
+  diagnosis   String?
+  deleted_at  DateTime?        @db.Timestamptz(6)
+  created_at  DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime         @default(now()) @updatedAt @db.Timestamptz(6)
+
+  patients           patients             @relation(fields: [patient_id], references: [id], map: "fk_record_patient")
+  medical_files      medical_files[]
+  record_access_logs record_access_logs[]
+  consents           consents[]
+
+  @@index([patient_id], map: "idx_medical_records_patient")
+}
+
+model medical_files {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  medical_record_id String   @db.Uuid
+  file_name         String   @db.VarChar(255)
+  file_type         String   @db.VarChar(100)
+  storage_key       String   @db.VarChar(500)
+  file_size_bytes   Int?
+  ocr_text          String?
+  uploaded_at       DateTime @default(now()) @db.Timestamptz(6)
+
+  medical_records medical_records @relation(fields: [medical_record_id], references: [id], map: "fk_file_record")
+
+  @@index([medical_record_id], map: "idx_medical_files_record")
+}
+
+model consents {
+  id              String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patient_id      String                    @db.Uuid
+  granted_to_type consent_grantee_type_enum
+  granted_to_id   String                    @db.Uuid
+  record_id       String?                   @db.Uuid
+  status          consent_status_enum       @default(ACTIVE)
+  granted_at      DateTime                  @default(now()) @db.Timestamptz(6)
+  revoked_at      DateTime?                 @db.Timestamptz(6)
+
+  patients        patients         @relation(fields: [patient_id], references: [id], map: "fk_consent_patient")
+  medical_records medical_records? @relation(fields: [record_id], references: [id], map: "fk_consent_record")
+
+  @@index([patient_id], map: "idx_consents_patient")
+  @@index([granted_to_id], map: "idx_consents_grantee")
+  @@index([record_id], map: "idx_consents_record")
+}
+
+model record_access_logs {
+  id                String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  medical_record_id String                    @db.Uuid
+  accessed_by       String                    @db.Uuid
+  action            record_access_action_enum
+  access_time       DateTime                  @default(now()) @db.Timestamptz(6)
+  ip_address        String?                   @db.VarChar(45)
+
+  medical_records medical_records @relation(fields: [medical_record_id], references: [id], map: "fk_access_log_record")
+  users           users           @relation(fields: [accessed_by], references: [id], map: "fk_access_log_accessed_by")
+
+  @@index([medical_record_id], map: "idx_access_logs_record")
+  @@index([accessed_by], map: "idx_access_logs_accessor")
+}
+
+// --- AI Risk Prediction & Triage (Phase 3) --------------------------------
+
+model triage_sessions {
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patient_id       String              @db.Uuid
+  status           triage_status_enum  @default(STARTED)
+  symptoms_summary String?
+  risk_score       Int?
+  urgency_level    urgency_level_enum?
+  care_level       String?             @db.VarChar(100)
+  ai_explanation   String?
+  created_at       DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
+
+  patients                 patients                   @relation(fields: [patient_id], references: [id], map: "fk_triage_patient")
+  symptoms                 symptoms[]
+  vitals_readings          vitals_readings[]
+  hospital_recommendations hospital_recommendations[]
+
+  @@index([patient_id], map: "idx_triage_patient")
+}
+
+model symptoms {
+  id                String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  triage_session_id String  @db.Uuid
+  symptom_name      String  @db.VarChar(255)
+  severity          Int     @db.SmallInt
+  duration          String? @db.VarChar(100)
+
+  triage_sessions triage_sessions @relation(fields: [triage_session_id], references: [id], map: "fk_symptom_session", onDelete: Cascade)
+
+  @@index([triage_session_id], map: "idx_symptoms_session")
+}
+
+model vitals_readings {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patient_id        String           @db.Uuid
+  triage_session_id String?          @db.Uuid
+  source_type       source_type_enum @default(MANUAL)
+  heart_rate        Int?
+  spo2              Int?
+  systolic_bp       Int?
+  diastolic_bp      Int?
+  temperature       Decimal?         @db.Decimal(4, 1)
+  respiratory_rate  Int?
+  recorded_at       DateTime         @default(now()) @db.Timestamptz(6)
+
+  patients        patients         @relation(fields: [patient_id], references: [id], map: "fk_vitals_patient")
+  triage_sessions triage_sessions? @relation(fields: [triage_session_id], references: [id], map: "fk_vitals_session", onDelete: SetNull)
+
+  @@index([patient_id], map: "idx_vitals_patient")
+  @@index([triage_session_id], map: "idx_vitals_session")
+}
+
+// --- AI Hospital Intelligence Engine (Phase 4) -----------------------------
+//
+// Doctor Availability and Insurance Compatibility (from the plan's scoring
+// formula) are simplified here since Doctor Management (Phase 10) and a
+// hospital<->insurer join table don't exist yet: doctor counts live directly
+// on hospital_operational_status, and accepted insurers are a plain string
+// list on hospitals. See the Phase 4 plan doc for the full rationale.
+
+model hospitals {
+  id                          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                        String             @db.VarChar(255)
+  hospital_type               hospital_type_enum @default(PRIVATE)
+  address_line_1              String?            @db.VarChar(255)
+  city                        String?            @db.VarChar(100)
+  state                       String?            @db.VarChar(100)
+  latitude                    Decimal            @db.Decimal(9, 6)
+  longitude                   Decimal            @db.Decimal(9, 6)
+  emergency_supported         Boolean            @default(false)
+  verified                    Boolean            @default(false)
+  contact_number               String?            @db.VarChar(20)
+  reliability_score            Decimal            @default(0.80) @db.Decimal(3, 2)
+  accepted_insurance_providers String[]
+  created_at                   DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at                   DateTime           @default(now()) @updatedAt @db.Timestamptz(6)
+
+  departments              departments[]
+  operational_status       hospital_operational_status?
+  specialties              hospital_specialties[]
+  hospital_recommendations hospital_recommendations[]
+
+  @@index([city], map: "idx_hospitals_city")
+}
+
+model departments {
+  id              String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hospital_id     String  @db.Uuid
+  department_name String  @db.VarChar(150)
+  description     String?
+
+  hospitals hospitals @relation(fields: [hospital_id], references: [id], map: "fk_department_hospital", onDelete: Cascade)
+
+  @@index([hospital_id], map: "idx_departments_hospital")
+}
+
+model hospital_operational_status {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hospital_id         String   @unique @db.Uuid
+  available_beds      Int      @default(0)
+  total_beds          Int      @default(0)
+  available_icu       Int      @default(0)
+  total_icu           Int      @default(0)
+  available_doctors   Int      @default(0)
+  total_doctors       Int      @default(0)
+  emergency_load      Int      @default(0)
+  queue_load          Int      @default(0)
+  ventilators_available Int    @default(0)
+  updated_at          DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  hospitals hospitals @relation(fields: [hospital_id], references: [id], map: "fk_operational_status_hospital", onDelete: Cascade)
+}
+
+model hospital_specialties {
+  id                String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hospital_id       String @db.Uuid
+  specialization_id Int    @db.SmallInt
+
+  hospitals              hospitals              @relation(fields: [hospital_id], references: [id], map: "fk_specialty_hospital", onDelete: Cascade)
+  doctor_specializations doctor_specializations @relation(fields: [specialization_id], references: [id], map: "fk_specialty_specialization")
+
+  @@unique([hospital_id, specialization_id])
+  @@index([hospital_id], map: "idx_hospital_specialties_hospital")
+}
+
+model hospital_recommendations {
+  id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patient_id             String   @db.Uuid
+  triage_session_id      String?  @db.Uuid
+  hospital_id            String   @db.Uuid
+  recommendation_score   Decimal  @db.Decimal(5, 2)
+  eta_minutes            Int
+  wait_time_minutes      Int
+  recommendation_reason  String
+  created_at             DateTime @default(now()) @db.Timestamptz(6)
+
+  patients        patients         @relation(fields: [patient_id], references: [id], map: "fk_recommendation_patient")
+  hospitals       hospitals        @relation(fields: [hospital_id], references: [id], map: "fk_recommendation_hospital")
+  triage_sessions triage_sessions? @relation(fields: [triage_session_id], references: [id], map: "fk_recommendation_session", onDelete: SetNull)
+
+  @@index([patient_id], map: "idx_recommendations_patient")
+  @@index([hospital_id], map: "idx_recommendations_hospital")
+  @@index([triage_session_id], map: "idx_recommendations_session")
 }
 
 enum account_status_enum {
@@ -82,6 +432,13 @@ enum alert_severity_enum {
   MEDIUM
   HIGH
   CRITICAL
+}
+
+enum allergy_severity_enum {
+  MILD
+  MODERATE
+  SEVERE
+  UNKNOWN
 }
 
 enum appointment_status_enum {
@@ -110,6 +467,18 @@ enum blood_group_enum {
   O_POS   @map("O+")
   O_NEG   @map("O-")
   UNKNOWN
+}
+
+enum condition_status_enum {
+  ACTIVE
+  MANAGED
+  RESOLVED
+}
+
+enum consent_grantee_type_enum {
+  DOCTOR
+  HOSPITAL
+  PHARMACY
 }
 
 enum consent_status_enum {
@@ -153,6 +522,13 @@ enum queue_status_enum {
   IN_CONSULTATION
   COMPLETED
   CANCELLED
+}
+
+enum record_access_action_enum {
+  VIEW
+  DOWNLOAD
+  SHARE
+  DELETE
 }
 
 enum record_type_enum {

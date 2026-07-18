@@ -79,4 +79,22 @@ describe('RolesGuard', () => {
       guard.canActivate(contextForUser('user-1')),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
+
+  it('denies access when the caller has not picked a role yet', async () => {
+    const reflector = {
+      getAllAndOverride: jest.fn().mockReturnValue([UserRole.Admin]),
+    } as unknown as Reflector;
+    const prisma = {
+      users: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 'user-1', roles: null }),
+      },
+    } as unknown as PrismaService;
+    const guard = new RolesGuard(reflector, prisma);
+
+    await expect(
+      guard.canActivate(contextForUser('user-1')),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
 });

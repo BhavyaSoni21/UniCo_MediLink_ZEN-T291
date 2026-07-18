@@ -1,10 +1,13 @@
+import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { auth } from '@/lib/auth/server';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Home() {
-  const { data: session } = await auth.getSession();
+  const c = await cookies();
+  const token = c.get('session_token')?.value;
+  const { data: session } = await auth.getSession(token);
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center bg-zinc-50 font-sans dark:bg-black">
