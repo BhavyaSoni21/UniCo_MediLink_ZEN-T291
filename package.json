@@ -1,0 +1,17 @@
+{
+  "name": "medilink",
+  "private": true,
+  "version": "0.0.1",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "services/api"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=@medilink/web-portal",
+    "dev:api": "npm run start:dev --workspace=@medilink/api",
+    "build": "npm run build --workspace=@medilink/shared-types && npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm test --workspaces --if-present"
+  }
+}

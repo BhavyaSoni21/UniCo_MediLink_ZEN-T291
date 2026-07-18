@@ -2,6 +2,20 @@
 
 > **Note:** This repository contains the **web‑only** version of MediLink (patient, doctor, hospital, and admin portals) built for a hackathon demo. It follows the architecture outlined in the technical specification and revised hackathon proposal.
 
+## 🚧 Project Status
+
+This repo is being built in phases (see `docs/plan-the-entire-project-quiet-zebra.md` for the full plan). Current state:
+
+| Phase | Status | What's there |
+|-------|--------|---------------|
+| **Phase 0 – Project setup & infra** | ✅ Done | Monorepo scaffold (`apps/web-portal`, `services/api`, `services/ai-service`, `packages/shared-types`), Docker Compose, CI |
+| **Phase 1 – Auth & identity** | ✅ Done | Registration/login (Neon Auth), email OTP verification, JWT-verified RBAC on the backend, role-selection dashboard |
+| **Phases 2–12** (records, triage, hospital intelligence, appointments, pharmacy, vitals, dashboards, admin) | ⏳ Not started | See the plan doc |
+
+**What you can actually demo right now:** register → verify email (OTP) → log in → pick a role on the dashboard. The rest of the "Demo Flow" and "Features" sections below describe the target end state, not what's runnable today.
+
+One architectural deviation from the original plan worth knowing: **auth uses [Neon Auth](https://neon.com/docs/auth/overview)** (Neon's managed identity/credentials service) rather than a hand-rolled NestJS JWT auth service. Neon Auth owns registration, login, sessions, and email verification; our own Postgres `users`/`roles` tables only hold MediLink-domain data (role assignment) keyed by Neon Auth's external user id, and the NestJS API verifies bearer tokens against Neon Auth's JWKS endpoint for RBAC.
+
 ## 📋 Table of Contents
 - [Overview](#overview)
 - [Features](#features)
@@ -9,12 +23,7 @@
 - [Repository Structure](#repository-structure)
 - [Prerequisites](#prerequisites)
 - [Getting Started](#getting-started)
-  - [1. Clone the repo](#1-clone-the-repo)
-  - [2. Configure environment](#2-configure-environment)
-  - [3. Start infra with Docker‑Compose](#3-start-infra-with-docker-compose)
-  - [4. Run migrations & seed demo data](#4-run-migrations--seed-demo-data)
-  - [5. Launch the frontend](#5-launch-the-frontend)
-- [Demo Flow](#demo-flow)
+- [What You Can Demo Today](#what-you-can-demo-today)
 - [Development Tips](#development-tips)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
@@ -33,38 +42,42 @@ MediLink is a software‑first, AI‑enabled care‑coordination platform that h
 All components are containerized and can be spun up with a single `docker compose up` command, making the MVP demo‑ready in minutes.
 
 ## ✨ Features (MVP)
-| Module | Key Capabilities |
-|--------|------------------|
-| **Auth & Identity** | Email/phone registration, OTP/password login, JWT access & refresh tokens |
-| **Patient Profile** | Demographic info, medical history, allergies, medications, uploaded reports |
-| **Medical Records & Consent** | Upload PDF/PNG, OCR extraction, tagging, secure share links, access audit logs |
-| **AI Risk Prediction** | Symptom + vitals entry → risk score, urgency band, red‑flag markers |
-| **AI Hospital Intelligence Engine** | Weighted scoring (specialty, ETA, bed/doctor availability, queue, reliability, insurance) → ranked hospital recommendations with explanations |
-| **Appointment Booking** | Slot availability, booking, rescheduling, cancellation, queue token |
-| **Queue Tracking** | Live queue estimate, token position, average consultation time, priority insertion |
-| **Pharmacy Lookup** | Medicine search (generic & brand), nearby pharmacy ranking, stock status |
-| **AI Clinical Report Summarization** | Upload report → simplified patient summary + doctor‑facing brief + abnormality highlights |
-| **Simulated Live Vitals Dashboard** | Timer‑driven vitals stream, WebSocket push, alert generation on threshold breach |
-| **Doctor Dashboard** | Patient summary card, record view, vitals trend, triage view, consultation notes & prescription export |
-| **Hospital Dashboard** | Incoming case notifications, queue status, bed/ICU availability, alerts |
-| **Admin Panel** | User & institution management, configuration weights, audit logs, platform analytics |
-| **Notifications & Alerts** | In‑app notifications (push/SMS/WhatsApp placeholder), appointment reminders, emergency alerts |
-| **Realtime** | WebSocket (Socket.IO) + Redis Pub/Sub for live vitals & queue updates |
-| **Maps / ETA** | Google Maps API (or OSRM) for travel‑time calculations in hospital ranking |
+*Target feature set per the full plan — ✅ marks what's actually implemented today.*
+
+| Module | Key Capabilities | Status |
+|--------|------------------|--------|
+| **Auth & Identity** | Email registration + OTP email verification (Neon Auth), JWT-verified RBAC | ✅ |
+| **Patient Profile** | Demographic info, medical history, allergies, medications, uploaded reports | ⏳ |
+| **Medical Records & Consent** | Upload PDF/PNG, OCR extraction, tagging, secure share links, access audit logs | ⏳ |
+| **AI Risk Prediction** | Symptom + vitals entry → risk score, urgency band, red‑flag markers | ⏳ |
+| **AI Hospital Intelligence Engine** | Weighted scoring (specialty, ETA, bed/doctor availability, queue, reliability, insurance) → ranked hospital recommendations with explanations | ⏳ |
+| **Appointment Booking** | Slot availability, booking, rescheduling, cancellation, queue token | ⏳ |
+| **Queue Tracking** | Live queue estimate, token position, average consultation time, priority insertion | ⏳ |
+| **Pharmacy Lookup** | Medicine search (generic & brand), nearby pharmacy ranking, stock status | ⏳ |
+| **AI Clinical Report Summarization** | Upload report → simplified patient summary + doctor‑facing brief + abnormality highlights | ⏳ |
+| **Simulated Live Vitals Dashboard** | Timer‑driven vitals stream, WebSocket push, alert generation on threshold breach | ⏳ |
+| **Doctor Dashboard** | Patient summary card, record view, vitals trend, triage view, consultation notes & prescription export | ⏳ |
+| **Hospital Dashboard** | Incoming case notifications, queue status, bed/ICU availability, alerts | ⏳ |
+| **Admin Panel** | User & institution management, configuration weights, audit logs, platform analytics | ⏳ |
+| **Notifications & Alerts** | In‑app notifications (push/SMS/WhatsApp placeholder), appointment reminders, emergency alerts | ⏳ |
+| **Realtime** | WebSocket (Socket.IO) + Redis Pub/Sub for live vitals & queue updates | ⏳ |
+| **Maps / ETA** | Google Maps API (or OSRM) for travel‑time calculations in hospital ranking | ⏳ |
 
 ## 🛠️ Tech Stack
 | Layer | Technology |
 |-------|------------|
-| **Frontend** | Next.js (React) + Tailwind CSS (or Material‑UI) |
+| **Frontend** | Next.js 16 (React 19, App Router) + Tailwind CSS |
 | **Backend** | NestJS (Node.js) – modular monolith API |
-| **AI / Data Services** | FastAPI (Python) – risk scoring, report summarization, hospital‑intelligence engine |
-| **Database** | PostgreSQL (relational) |
+| **AI / Data Services** | FastAPI (Python) – risk scoring, report summarization, hospital‑intelligence engine (not yet implemented) |
+| **Auth / Identity** | [Neon Auth](https://neon.com/docs/auth/overview) — registration, login, sessions, email OTP verification. NestJS verifies bearer JWTs against Neon Auth's JWKS for RBAC |
+| **Email delivery** | [Resend](https://resend.com), invoked via Neon Auth's `send.otp`/`send.magic_link` webhooks (Neon's own shared sender has unreliable deliverability) |
+| **Database** | Neon PostgreSQL (cloud-hosted; no local Postgres container) via Prisma |
 | **Cache / PubSub** | Redis |
-| **Object Storage** | MinIO (S3‑compatible) – for uploaded reports |
-| **Realtime** | Socket.IO (WebSocket) + Redis Pub/Sub |
-| **Maps / ETA** | Google Maps API (or OpenStreetMap + OSRM) |
+| **Object Storage** | MinIO (S3‑compatible) – for uploaded reports (not yet wired up) |
+| **Realtime** | Socket.IO (WebSocket) + Redis Pub/Sub (not yet implemented) |
+| **Maps / ETA** | Google Maps API (or OpenStreetMap + OSRM) (not yet implemented) |
 | **DevOps** | Docker + Docker‑Compose (local) → optional Kubernetes |
-| **CI/CD** | GitHub Actions (lint, test, build, push) – optional for hackathon |
+| **CI/CD** | GitHub Actions — lint/build/test on PR (`.github/workflows/ci.yml`), Neon branch-per-PR (`neon_workflow.yml`) |
 | **Language** | TypeScript (backend & frontend), Python (AI service) |
 
 ## 📂 Repository Structure
@@ -73,35 +86,34 @@ medilink/
 ├─ apps/
 │   └─ web-portal/          # Next.js frontend (patient, doctor, hospital, admin)
 ├─ services/
-│   ├─ api/                 # NestJS backend
-│   └─ ai-service/          # FastAPI AI microservice
+│   ├─ api/                 # NestJS backend (Prisma, auth guards, RBAC)
+│   └─ ai-service/          # FastAPI AI microservice (health check only so far)
 ├─ infra/
 │   └─ docker/              # Docker‑Compose & Dockerfiles
 ├─ packages/
-│   └─ shared-types/        # (optional) TS interfaces shared by frontend & API
+│   └─ shared-types/        # TS interfaces/enums shared by frontend & API (e.g. UserRole)
 └─ docs/
-    ├─ api/                 # OpenAPI spec (generated)
-    └─ architecture/        # diagrams, DB schema, notes
+    └─ plan-the-entire-project-quiet-zebra.md   # full phased implementation plan
 ```
 
 ## 🔧 Prerequisites
 - **Git** – version control
 - **Node.js** ≥ 20.x LTS (includes npm)
-- **Python** ≥ 3.11
-- **Docker Desktop** ≥ 4.x
-- **(Optional) MinIO** – runs automatically via Docker‑Compose; otherwise you can use any S3‑compatible service
-- **Google Maps API key** – for travel‑time calculations (get a key from Google Cloud Console)
+- **Python** ≥ 3.10 (3.11+ per the original spec, 3.10 also works)
+- **Docker Desktop** ≥ 4.x — only needed if you want to run the full stack via `docker compose`; local dev (`npm run dev`) doesn't require it
+- **A [Neon](https://neon.tech) project with Auth enabled** — provides `DATABASE_URL`, `Auth_URL`, `JWKS_URL` (Neon dashboard → your project → Auth → Configuration)
+- **A [Resend](https://resend.com) account** — free tier is enough; provides `RESEND_API_KEY`. Sandbox mode only delivers to the email your Resend account is registered under until you verify a sending domain
+- **Google Maps API key** – for travel‑time calculations (not yet used, needed in a later phase)
 
-Install via your package manager (example for Windows + WSL2):
+Install via your package manager (example for Windows):
 ```bash
 winget install Git.Git
 winget install OpenJS.NodeJS
 winget install Python.Python.3
-# Docker Desktop: https://www.docker.com/products/docker-desktop
+# Docker Desktop (optional): https://www.docker.com/products/docker-desktop
 ```
 
 ## 🚀 Getting Started
-Follow these steps to spin up the entire stack locally.
 
 ### 1. Clone the repo
 ```bash
@@ -110,162 +122,106 @@ cd medilink
 ```
 
 ### 2. Configure environment
-Create a `.env` file at the repository root (you can copy `.env.example` if it exists). Adjust values as needed; the defaults work with the supplied `docker‑compose.yml`.
-
-```dotenv
-# ======================
-#  Backend (NestJS) API
-# ======================
-POSTGRES_USER=medilink
-POSTGRES_PASSWORD=medilink_pass
-POSTGRES_DB=medilink
-POSTGRES_HOST=postgres
-POSTGRES_PORT=5432
-JWT_SECRET=super-secret-change-me   # replace with a strong random string in prod
-JWT_EXPIRES_IN=7d
-
-# ======================
-#  Redis (cache/pubsub)
-# ======================
-REDIS_HOST=redis
-REDIS_PORT=6379
-
-# ======================
-#  Object Storage (MinIO)
-# ======================
-MINIO_ENDPOINT=http://minio:9000
-MINIO_ACCESS_KEY=minioadmin
-MINIO_SECRET_KEY=minioadmin
-MINIO_BUCKET=medilink-reports
-
-# ======================
-#  AI Service (FastAPI)
-# ======================
-OPENAI_API_KEY=sk-...          # optional – for LLM summarization
-HF_API_KEY=...                 # optional – for HuggingFace models
-AI_SERVICE_PORT=8000
-
-# ======================
-#  Maps / ETA
-# ======================
-GOOGLE_MAPS_API_KEY=YOUR_KEY_HERE   # get from Google Cloud Console
-
-# ======================
-#  Miscellaneous
-# ======================
-NODE_ENV=development
-PORT=3000                     # API gateway port (NGINX forwards to this)
-FRONTEND_PORT=3001          # Next.js dev server (if you run it separately)
+Copy `.env.example` to `.env` at the repository root and fill in real values — Neon connection details, Neon Auth config, and a Resend API key. See the comments in `.env.example` for where to get each one. Generate `NEON_AUTH_COOKIE_SECRET` with:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
-> **Security note:** For a hackathon demo it’s fine to use placeholder secrets. Never commit real secrets to Git.
+> **Security note:** Never commit your real `.env` — it's already gitignored.
 
-### 3. Start infra with Docker‑Compose
+### 3. Install dependencies
+This is an npm workspaces monorepo — install once from the root:
 ```bash
-# From the repo root
+npm install
+```
+
+### 4. Set up the database
+```bash
+cd services/api
+npx prisma migrate dev   # applies migrations to your Neon database
+npm run db:seed          # seeds the 4 roles: patient, doctor, hospital, admin
+cd ../..
+```
+
+### 5. Run the services locally (fastest for development)
+Each in its own terminal, from the repo root:
+```bash
+npm run dev:api    # NestJS on http://localhost:3000
+npm run dev:web    # Next.js on http://localhost:3001
+```
+For the AI service (Python):
+```bash
+.venv\Scripts\Activate.ps1        # Windows PowerShell; adjust for your shell
+cd services\ai-service
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+**Or** run everything via Docker Compose instead of steps 5 (needs Docker Desktop running):
+```bash
 cd infra/docker
 docker compose up --build -d
+docker compose ps   # confirm api, ai-service, web, redis, minio, nginx are Up
 ```
-This command builds the NestJS and FastAPI images, starts PostgreSQL, Redis, MinIO, and an NGINX reverse proxy.
 
-Check that all containers are healthy:
+### 6. Enable email delivery for OTP verification (optional but recommended)
+By default Neon Auth's shared email sender has unreliable deliverability. This repo routes verification emails through Resend instead via a webhook. To test this locally, Neon requires the webhook URL to be public HTTPS (it rejects `localhost`), so you need a tunnel:
 ```bash
-docker compose ps
+cloudflared tunnel --url http://localhost:3001
 ```
-You should see services like `medilink-api`, `medilink-ai`, `postgres`, `redis`, `minio`, `nginx` with `State: Up`.
-
-### 4. Run migrations & seed demo data
-The backend (NestJS) uses an ORM (TypeORM/Prisma). Run the migration script that creates tables per the spec, then seed demo data (hospitals, pharmacies, sample patients, reports, etc.).
-
+Then register the tunnel's HTTPS URL + `/api/webhooks/neon` as your webhook (see `NEON_AUTH_WEBHOOK_URL` in `.env.example` for the shape) via:
 ```bash
-# Inside the API container (or locally if you have the CLI)
-docker exec -it medilink-api npm run typeorm:migration:run   # if using TypeORM
-# OR
-docker exec -it medilink-api npm run prisma:migrate          # if using Prisma
-
-# Seed demo data
-docker exec -it medilink-api npm run seed:demo
+curl -X PUT "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$NEON_BRANCH_ID/auth/webhooks" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $NEON_API_KEY" \
+  -d '{"enabled": true, "webhook_url": "<your-tunnel-url>/api/webhooks/neon", "enabled_events": ["send.otp", "send.magic_link"]}'
 ```
-The seed script creates:
-- 10‑20 hospitals with specialties, lat/lng, bed/ICU capacity
-- 5‑10 pharmacies with medicine inventory
-- 3 patient scenarios (stable, respiratory distress, hypertensive crisis)
-- 3 sample medical reports (PDF/PNG) uploaded to MinIO
-- Doctor & admin users (feel free to create your own via the API)
+The tunnel URL changes every time it restarts (free/anonymous `cloudflared` tunnels aren't persistent) — re-run the registration whenever that happens.
 
-### 5. Launch the frontend
-```bash
-# From repo root
-cd apps/web-portal
-npm install          # first time only
-npm run dev          # starts Next.js dev server on http://localhost:3001
-```
-The frontend proxies API calls to `http://localhost:3000` (NGINX) and the AI service to `http://localhost:8000` via environment variables in `.env.local`.
+## 🎬 What You Can Demo Today
+1. Open **http://localhost:3001** — you'll see login/register links.
+2. **Register** at `/register` with an email + password. You'll be prompted for a 6-digit code.
+3. **Check your email** for the code (see step 6 above to get this actually delivered) and enter it to verify.
+4. **Log in** at `/login`.
+5. You'll land on `/dashboard` — since this is your first login, you'll be asked to pick a role (patient/doctor/hospital/admin). This calls the NestJS backend's `/api/v1/auth/complete-profile`, which JIT-provisions your profile in Postgres.
+6. Reload `/dashboard` — you'll now see your email, role, and account status, fetched from `/api/v1/auth/me` with a JWT verified against Neon Auth's JWKS.
 
-If you prefer the frontend to be served through NGINX on the same port as the API, you can build the Next.js app and let NGINX serve the static files:
-```bash
-npm run build
-# Then copy the .next output to infra/docker/nginx/html or adjust the NGINX config.
-```
-For hackathon speed, running `npm run dev` on a separate port is simplest.
-
-## 📊 Demo Flow (SOS → Care Completion)
-1. **Open the patient portal** – usually `http://localhost:3001` (or `http://localhost:3000` if you proxied via NGINX).
-2. **Start SOS / Symptom Intake** – click **“Start SOS”** or select a pre‑loaded scenario (e.g., *Patient B – high‑risk*).
-3. **Enter vitals** (or let the simulation fill them).
-4. **AI Risk Prediction** – see urgency score, explanation, red‑flag markers.
-5. **Get Hospital Recommendation** – view ranked list with ETA, predicted wait, match score, and rationale.
-6. **Upload a medical report** (PDF/PNG) – file goes to MinIO, metadata stored in PostgreSQL.
-7. **Share record with doctor** – creates a consent record and notifies the doctor portal.
-8. **Doctor portal** (`/doctor`) – see incoming case notification, patient summary card, AI‑generated report brief, vitals trend.
-9. **Confirm appointment** – doctor books a slot; backend creates appointment and updates queue service.
-10. **Patient sees appointment confirmation & estimated wait time**.
-11. **Hospital dashboard** (`/hospital`) – view new token, updated queue length, bed/ICU status, alerts if vitals cross thresholds.
-12. **Pharmacy lookup** – from the prescription screen, click **“Check Pharmacy”** → see nearby pharmacies with stock status and distance.
-13. **Longitudinal profile** – after the visit, the patient’s timeline is updated with visit note, prescription, and any new vitals.
-
-All steps work with the simulated/demo data you seeded. Feel free to tweak vitals to watch the AI risk score change and observe different hospital recommendations.
+Everything past this (patient records, triage, hospital recommendations, appointments, pharmacy, etc.) is not built yet — see [Project Status](#-project-status).
 
 ## 🛠️ Development Tips
-- **Backend hot‑reload:** `npm run start:dev` inside `services/api`.
-- **AI service hot‑reload:** `uvicorn main:app --reload --host 0.0.0.0 --port 8000` inside `services/ai-service`.
-- **Frontend hot‑reload:** `npm run dev` inside `apps/web-portal`.
-- **Linting / Formatting:**  
-  - Backend: `npm run lint` (ESLint) & `npm run format` (Prettier).  
-  - Frontend: `npm run lint` (ESLint) & `npm run format` (Prettier).  
-  - Python: `flake8` & `black` (configured in `services/ai-service`).
-- **Running tests:**  
-  - Backend: `npm test` (Jest).  
-  - Frontend: `npm test` (Jest/Rocket).  
-  - AI service: `pytest` inside `services/ai-service`.
-- **Database inspection:**  
+- **Backend hot‑reload:** `npm run dev:api` from repo root, or `npm run start:dev` inside `services/api`.
+- **AI service hot‑reload:** `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000` inside `services/ai-service`.
+- **Frontend hot‑reload:** `npm run dev:web` from repo root, or `npm run dev` inside `apps/web-portal`.
+- **Linting / Formatting:**
+  - Backend & frontend: `npm run lint` (per-workspace, or `npm run lint --workspaces` from root)
+  - Python: `flake8 app tests` & `black .` inside `services/ai-service`
+- **Running tests:**
+  - Backend: `npm test` (unit) and `npm run test:e2e` (e2e) inside `services/api`, or `npm test --workspaces` from root
+  - AI service: `pytest` inside `services/ai-service`
+- **Database:**
+  - Inspect/browse: `npx prisma studio` inside `services/api`
+  - New migration after schema changes: `npx prisma migrate dev --name <description>`
+  - Re-seed roles: `npm run db:seed` inside `services/api`
+- **Redis CLI (when running via Docker Compose):**
   ```bash
-  docker exec -it postgres psql -U medilink -d medilink
+  docker exec -it medilink-redis-1 redis-cli
   ```
-- **Redis CLI:**  
-  ```bash
-  docker exec -it redis redis-cli
-  ```
-- **MinIO console:** Visit `http://localhost:9001` (login `minioadmin` / `minioadmin`) to inspect uploaded objects.
+- **MinIO console (when running via Docker Compose):** `http://localhost:9001` (login `minioadmin` / `minioadmin`)
 
 ## 🐞 Troubleshooting
 | Symptom | Likely Cause | Fix |
 |---------|--------------|-----|
-| Containers exit immediately | Missing env vars or port conflicts | Check `docker compose logs <service>`; ensure `.env` is present and ports 3000, 3001, 8000, 5432, 6379, 9000, 9001 are free. |
-| API returns 500 | DB connection failed | Verify PostgreSQL is up (`docker compose logs postgres`) and credentials in `.env` match. |
-| Frontend cannot reach API | CORS or proxy mis‑config | Ensure `.env.local` has correct `NEXT_PUBLIC_API_BASE_URL` and that NGINX is forwarding `/api` to the backend. |
-| AI service health check fails | Missing Python packages | Re‑run `pip install -r requirements.txt` inside `services/ai-service` or rebuild the image (`docker compose build ai-service`). |
-| MinIO upload fails | Wrong bucket name or credentials | Verify `MINIO_BUCKET`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` in `.env`. |
-| No live vitals updates | WebSocket not connecting | Check browser console for WS errors; ensure Redis Pub/Sub is working (`docker compose logs redis`). |
+| `npm run dev:api` fails to connect to the database | `DATABASE_URL` missing/wrong in `.env` | Copy the Prisma connection string from Neon dashboard → your project → Connect |
+| `/api/v1/auth/me` always 401 | `JWKS_URL` missing/wrong, or bearer token expired (Neon Auth tokens last ~15 min) | Verify `JWKS_URL` in `.env`; re-fetch a token via `authClient.token()` |
+| `/dashboard` redirects to `/login` even when logged in | Session cookie not set, or `proxy.ts` matcher misconfigured | Check `NEON_AUTH_COOKIE_SECRET` is set; confirm you're on `http://localhost:3001` (not a different port) |
+| Registered but never received a verification email | Neon Auth's shared sender is unreliable, or the Resend webhook isn't registered/reachable | Follow [step 6](#6-enable-email-delivery-for-otp-verification-optional-but-recommended); check the tunnel is still running (URLs expire on restart) |
+| Resend returns `403` "can only send to your own email" | Sandbox mode restriction | Only your Resend account's registered email can receive mail until you verify a sending domain at resend.com/domains |
+| Docker containers exit immediately | Missing env vars or port conflicts | Check `docker compose logs <service>` from `infra/docker`; ensure `.env` is present and ports 3000, 3001, 8000, 6379, 9000, 9001, 80 are free |
+| `npm run build` fails on `apps/web-portal` with a lightningcss/musl error | Windows-generated lockfile lacks Linux binary metadata (Docker builds only) | Already handled in `infra/docker/web/Dockerfile` — if you hit this outside Docker, delete `apps/web-portal/node_modules` and reinstall on Linux/WSL |
 
-If you’re still stuck, run:
+If you're still stuck and running via Docker Compose:
 ```bash
 cd infra/docker
 docker compose logs -f   # follow all logs
-```
-or inspect a specific service:
-```bash
-docker compose logs -f medilink-api
 ```
 
 ## 📄 License
