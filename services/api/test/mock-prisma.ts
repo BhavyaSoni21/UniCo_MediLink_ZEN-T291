@@ -65,9 +65,36 @@ export function createMockPrismaService() {
     symptoms: { deleteMany: jest.fn(), createMany: jest.fn() },
     vitals_readings: { create: jest.fn() },
     hospitals: { findMany: jest.fn(), findUnique: jest.fn() },
-    doctor_specializations: { findUnique: jest.fn() },
+    doctor_specializations: { findUnique: jest.fn(), findMany: jest.fn() },
     hospital_operational_status: { findUnique: jest.fn(), upsert: jest.fn() },
     hospital_recommendations: { create: jest.fn(), findUnique: jest.fn() },
+    doctors: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn(), upsert: jest.fn() },
+    doctor_schedules: { findMany: jest.fn(), deleteMany: jest.fn(), createMany: jest.fn() },
+    appointments: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    },
+    queue_entries: {
+      count: jest.fn(),
+      create: jest.fn(),
+      findMany: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    medicines: { findMany: jest.fn(), findUnique: jest.fn() },
+    pharmacies: { findMany: jest.fn(), findUnique: jest.fn() },
+    pharmacy_inventory: {
+      findUnique: jest.fn(),
+      upsert: jest.fn(),
+      update: jest.fn(),
+    },
+    medicine_reservations: {
+      create: jest.fn(),
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
+    },
   };
 
   mockPrisma.$transaction.mockImplementation((arg: unknown) =>

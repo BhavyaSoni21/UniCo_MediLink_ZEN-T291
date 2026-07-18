@@ -81,6 +81,14 @@ export class AuthService {
       });
     }
 
+    if (role === UserRole.Doctor) {
+      await this.prisma.doctors.upsert({
+        where: { user_id: token.sub },
+        update: {},
+        create: { user_id: token.sub },
+      });
+    }
+
     return user;
   }
 

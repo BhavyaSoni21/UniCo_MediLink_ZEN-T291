@@ -169,6 +169,81 @@ const HOSPITALS: Array<{
   },
 ];
 
+// Two medicines per generic_name (different brand) so the "generic
+// alternative" lookup has something real to return.
+const MEDICINES: Array<{
+  generic_name: string;
+  brand_name: string;
+  manufacturer: string;
+  dosage_form: string;
+  strength: string;
+}> = [
+  { generic_name: 'Paracetamol', brand_name: 'Panadol', manufacturer: 'GSK', dosage_form: 'Tablet', strength: '500mg' },
+  { generic_name: 'Paracetamol', brand_name: 'Crocin', manufacturer: 'GSK', dosage_form: 'Tablet', strength: '500mg' },
+  { generic_name: 'Ibuprofen', brand_name: 'Advil', manufacturer: 'Pfizer', dosage_form: 'Tablet', strength: '200mg' },
+  { generic_name: 'Amoxicillin', brand_name: 'Amoxil', manufacturer: 'GSK', dosage_form: 'Capsule', strength: '250mg' },
+  { generic_name: 'Metformin', brand_name: 'Glucophage', manufacturer: 'Merck', dosage_form: 'Tablet', strength: '500mg' },
+  { generic_name: 'Cetirizine', brand_name: 'Zyrtec', manufacturer: 'UCB', dosage_form: 'Tablet', strength: '10mg' },
+];
+
+// Fictional demo pharmacies clustered near the same location as HOSPITALS
+// above, for the same haversine-ranking reason.
+const PHARMACIES: Array<{
+  pharmacy_name: string;
+  hospital_name: string | null;
+  city: string;
+  state: string;
+  latitude: number;
+  longitude: number;
+  verified: boolean;
+  stock: Array<{ brand_name: string; stock_quantity: number; is_available?: boolean }>;
+}> = [
+  {
+    pharmacy_name: 'City General Pharmacy',
+    hospital_name: 'City General Hospital',
+    city: 'Rivertown',
+    state: 'RT',
+    latitude: 28.6105,
+    longitude: 77.2105,
+    verified: true,
+    stock: [
+      { brand_name: 'Panadol', stock_quantity: 120 },
+      { brand_name: 'Advil', stock_quantity: 40 },
+      { brand_name: 'Amoxil', stock_quantity: 15 },
+      { brand_name: 'Glucophage', stock_quantity: 0 },
+    ],
+  },
+  {
+    pharmacy_name: 'Rivertown Community Pharmacy',
+    hospital_name: null,
+    city: 'Rivertown',
+    state: 'RT',
+    latitude: 28.6300,
+    longitude: 77.2300,
+    verified: true,
+    stock: [
+      { brand_name: 'Crocin', stock_quantity: 60 },
+      { brand_name: 'Zyrtec', stock_quantity: 25 },
+      { brand_name: 'Glucophage', stock_quantity: 30 },
+      { brand_name: 'Advil', stock_quantity: 0, is_available: false },
+    ],
+  },
+  {
+    pharmacy_name: 'Northside Pharmacy',
+    hospital_name: 'Northside Heart & Ortho Specialty Centre',
+    city: 'Rivertown',
+    state: 'RT',
+    latitude: 28.6455,
+    longitude: 77.1855,
+    verified: false,
+    stock: [
+      { brand_name: 'Panadol', stock_quantity: 8 },
+      { brand_name: 'Amoxil', stock_quantity: 50 },
+      { brand_name: 'Zyrtec', stock_quantity: 10 },
+    ],
+  },
+];
+
 async function main() {
   for (const role of ROLES) {
     await prisma.roles.upsert({
@@ -239,6 +314,53 @@ async function main() {
     }
   }
   console.log(`Seeded ${HOSPITALS.length} hospitals with operational status and specialties.`);
+
+  const medicineIdsByBrand = new Map<string, string>();
+  for (const m of MEDICINES) {
+    const existing = await prisma.medicines.findFirst({ where: { brand_name: m.brand_name } });
+    const medicine = existing
+      ? await prisma.medicines.update({ where: { id: existing.id }, data: m })
+      : await prisma.medicines.create({ data: m });
+    medicineIdsByBrand.set(m.brand_name, medicine.id);
+  }
+  console.log(`Seeded ${MEDICINES.length} medicines.`);
+
+  for (const p of PHARMACIES) {
+    const hospital = p.hospital_name
+      ? await prisma.hospitals.findFirst({ where: { name: p.hospital_name } })
+      : null;
+
+    const existing = await prisma.pharmacies.findFirst({ where: { pharmacy_name: p.pharmacy_name } });
+    const pharmacyData = {
+      hospital_id: hospital?.id,
+      city: p.city,
+      state: p.state,
+      latitude: p.latitude,
+      longitude: p.longitude,
+      verified: p.verified,
+    };
+    const pharmacy = existing
+      ? await prisma.pharmacies.update({ where: { id: existing.id }, data: pharmacyData })
+      : await prisma.pharmacies.create({
+          data: { pharmacy_name: p.pharmacy_name, ...pharmacyData },
+        });
+
+    for (const s of p.stock) {
+      const medicineId = medicineIdsByBrand.get(s.brand_name);
+      if (!medicineId) continue;
+      await prisma.pharmacy_inventory.upsert({
+        where: { pharmacy_id_medicine_id: { pharmacy_id: pharmacy.id, medicine_id: medicineId } },
+        update: { stock_quantity: s.stock_quantity, is_available: s.is_available ?? true },
+        create: {
+          pharmacy_id: pharmacy.id,
+          medicine_id: medicineId,
+          stock_quantity: s.stock_quantity,
+          is_available: s.is_available ?? true,
+        },
+      });
+    }
+  }
+  console.log(`Seeded ${PHARMACIES.length} pharmacies with inventory.`);
 }
 
 main()

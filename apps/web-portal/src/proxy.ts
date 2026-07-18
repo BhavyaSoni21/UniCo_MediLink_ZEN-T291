@@ -16,5 +16,9 @@ export const config = {
     '/records/:path*',
     '/triage/:path*',
     '/hospitals/:path*',
+    '/doctors/:path*',
+    '/doctor/:path*',
+    '/appointments/:path*',
+    '/pharmacy/:path*',
   ],
 };

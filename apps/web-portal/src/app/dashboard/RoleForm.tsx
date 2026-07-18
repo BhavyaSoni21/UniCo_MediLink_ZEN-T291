@@ -18,9 +18,15 @@ export function RoleForm() {
     // full document load re-runs the Server Component via a normal HTML
     // request instead, avoiding the broken RSC fetch path.
     if (state.success) {
-      window.location.href = '/profile';
+      const destination =
+        state.role === UserRole.Patient
+          ? '/profile'
+          : state.role === UserRole.Doctor
+            ? '/doctor/profile'
+            : '/dashboard';
+      window.location.href = destination;
     }
-  }, [state.success]);
+  }, [state.success, state.role]);
 
   return (
     <form action={formAction} className="flex flex-col gap-4">

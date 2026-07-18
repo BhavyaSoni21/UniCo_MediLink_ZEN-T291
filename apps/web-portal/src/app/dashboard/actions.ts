@@ -7,6 +7,7 @@ const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000/api/v1';
 export interface CompleteProfileState {
   error?: string;
   success?: boolean;
+  role?: string;
 }
 
 export async function completeProfile(
@@ -20,6 +21,7 @@ export async function completeProfile(
       return { error: 'Your session has expired — please log in again.' };
     }
 
+    const role = formData.get('role') as string;
     const url = `${API_BASE_URL}/auth/complete-profile`;
     const res = await fetch(url, {
       method: 'POST',
@@ -27,7 +29,7 @@ export async function completeProfile(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ role: formData.get('role') }),
+      body: JSON.stringify({ role }),
     });
 
     if (!res.ok) {
@@ -35,7 +37,7 @@ export async function completeProfile(
       return { error: body?.message || `Could not save your role (${res.status})` };
     }
 
-    return { success: true };
+    return { success: true, role };
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'Unexpected error saving your role' };
   }

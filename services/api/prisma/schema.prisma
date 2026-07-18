@@ -14,6 +14,7 @@ model doctor_specializations {
   description         String?
 
   hospital_specialties hospital_specialties[]
+  doctors              doctors[]
 }
 
 model medicines {
@@ -25,6 +26,11 @@ model medicines {
   strength     String?   @db.VarChar(100)
   created_at   DateTime? @default(now()) @db.Timestamptz(6)
   updated_at   DateTime? @default(now()) @db.Timestamptz(6)
+
+  pharmacy_inventory    pharmacy_inventory[]
+  medicine_reservations medicine_reservations[]
+
+  @@index([generic_name], map: "idx_medicines_generic_name")
 }
 
 model playing_with_neon {
@@ -67,6 +73,7 @@ model users {
   // apart from "role explicitly set". Don't default this at sign-up.
   roles              roles?               @relation(fields: [role_id], references: [id], map: "fk_user_role")
   patients           patients?
+  doctors            doctors?
   record_access_logs record_access_logs[]
 
   @@index([email], map: "idx_users_email")
@@ -103,6 +110,8 @@ model patients {
   triage_sessions          triage_sessions[]
   vitals_readings          vitals_readings[]
   hospital_recommendations hospital_recommendations[]
+  appointments             appointments[]
+  medicine_reservations    medicine_reservations[]
 
   @@index([user_id], map: "idx_patients_user")
 }
@@ -291,6 +300,7 @@ model triage_sessions {
   symptoms                 symptoms[]
   vitals_readings          vitals_readings[]
   hospital_recommendations hospital_recommendations[]
+  appointments             appointments[]
 
   @@index([patient_id], map: "idx_triage_patient")
 }
@@ -356,6 +366,9 @@ model hospitals {
   operational_status       hospital_operational_status?
   specialties              hospital_specialties[]
   hospital_recommendations hospital_recommendations[]
+  doctors                  doctors[]
+  appointments             appointments[]
+  pharmacies               pharmacies[]
 
   @@index([city], map: "idx_hospitals_city")
 }
@@ -366,7 +379,8 @@ model departments {
   department_name String  @db.VarChar(150)
   description     String?
 
-  hospitals hospitals @relation(fields: [hospital_id], references: [id], map: "fk_department_hospital", onDelete: Cascade)
+  hospitals    hospitals      @relation(fields: [hospital_id], references: [id], map: "fk_department_hospital", onDelete: Cascade)
+  appointments appointments[]
 
   @@index([hospital_id], map: "idx_departments_hospital")
 }
@@ -418,6 +432,151 @@ model hospital_recommendations {
   @@index([patient_id], map: "idx_recommendations_patient")
   @@index([hospital_id], map: "idx_recommendations_hospital")
   @@index([triage_session_id], map: "idx_recommendations_session")
+}
+
+// --- Appointment Booking & Queue Management (Phase 5) ----------------------
+//
+// doctors is the minimal prerequisite entity this phase needed: no Doctor
+// Management phase exists in the plan before this one, so hospital_id and
+// specialization_id start nullable (JIT-provisioned bare on role selection,
+// same as patients) and get filled in via the doctor's own onboarding form.
+
+model doctors {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id             String   @unique @db.Uuid
+  hospital_id         String?  @db.Uuid
+  specialization_id   Int?     @db.SmallInt
+  license_number      String?  @db.VarChar(100)
+  experience_years    Int?
+  consultation_fee    Decimal? @db.Decimal(10, 2)
+  availability_status Boolean  @default(true)
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  users                  users                   @relation(fields: [user_id], references: [id], map: "fk_doctor_user")
+  hospitals              hospitals?              @relation(fields: [hospital_id], references: [id], map: "fk_doctor_hospital")
+  doctor_specializations doctor_specializations? @relation(fields: [specialization_id], references: [id], map: "fk_doctor_specialization")
+  schedules              doctor_schedules[]
+  appointments           appointments[]
+
+  @@index([hospital_id], map: "idx_doctors_hospital")
+  @@index([specialization_id], map: "idx_doctors_specialization")
+}
+
+model doctor_schedules {
+  id                    String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  doctor_id             String @db.Uuid
+  day_of_week           Int    @db.SmallInt
+  start_time            String @db.VarChar(5)
+  end_time              String @db.VarChar(5)
+  slot_duration_minutes Int    @default(15)
+
+  doctors doctors @relation(fields: [doctor_id], references: [id], map: "fk_schedule_doctor", onDelete: Cascade)
+
+  @@index([doctor_id], map: "idx_schedules_doctor")
+}
+
+model appointments {
+  id                 String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patient_id         String                  @db.Uuid
+  doctor_id          String                  @db.Uuid
+  hospital_id        String                  @db.Uuid
+  department_id      String?                 @db.Uuid
+  appointment_date   DateTime                @db.Timestamptz(6)
+  appointment_type   appointment_type_enum   @default(CONSULTATION)
+  appointment_status appointment_status_enum @default(SCHEDULED)
+  priority_level     urgency_level_enum      @default(LOW)
+  triage_session_id  String?                 @db.Uuid
+  created_at         DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime                @default(now()) @updatedAt @db.Timestamptz(6)
+
+  patients        patients         @relation(fields: [patient_id], references: [id], map: "fk_appointment_patient")
+  doctors         doctors          @relation(fields: [doctor_id], references: [id], map: "fk_appointment_doctor")
+  hospitals       hospitals        @relation(fields: [hospital_id], references: [id], map: "fk_appointment_hospital")
+  departments     departments?     @relation(fields: [department_id], references: [id], map: "fk_appointment_department")
+  triage_sessions triage_sessions? @relation(fields: [triage_session_id], references: [id], map: "fk_appointment_triage", onDelete: SetNull)
+  queue_entry     queue_entries?
+
+  @@unique([doctor_id, appointment_date])
+  @@index([patient_id], map: "idx_appointments_patient")
+  @@index([doctor_id], map: "idx_appointments_doctor")
+  @@index([hospital_id], map: "idx_appointments_hospital")
+}
+
+model queue_entries {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  appointment_id String            @unique @db.Uuid
+  queue_position Int
+  estimated_wait Int
+  actual_wait    Int?
+  status         queue_status_enum @default(WAITING)
+  created_at     DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime          @default(now()) @updatedAt @db.Timestamptz(6)
+
+  appointments appointments @relation(fields: [appointment_id], references: [id], map: "fk_queue_appointment", onDelete: Cascade)
+}
+
+// --- Pharmacy Lookup & Medicine Search (Phase 6) ---------------------------
+//
+// No pharmacy-staff role exists in this app's RBAC (patient/doctor/hospital/
+// admin only) — inventory management is Admin-gated instead of a dedicated
+// pharmacy dashboard, the same restraint applied elsewhere rather than
+// building unused role infrastructure early.
+
+model pharmacies {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hospital_id    String?  @db.Uuid
+  pharmacy_name  String   @db.VarChar(255)
+  address_line_1 String?  @db.VarChar(255)
+  city           String?  @db.VarChar(100)
+  state          String?  @db.VarChar(100)
+  latitude       Decimal  @db.Decimal(9, 6)
+  longitude      Decimal  @db.Decimal(9, 6)
+  verified       Boolean  @default(false)
+  contact_number String?  @db.VarChar(20)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  hospitals             hospitals?              @relation(fields: [hospital_id], references: [id], map: "fk_pharmacy_hospital")
+  inventory             pharmacy_inventory[]
+  medicine_reservations medicine_reservations[]
+
+  @@index([city], map: "idx_pharmacies_city")
+  @@index([hospital_id], map: "idx_pharmacies_hospital")
+}
+
+model pharmacy_inventory {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pharmacy_id    String   @db.Uuid
+  medicine_id    String   @db.Uuid
+  stock_quantity Int      @default(0)
+  is_available   Boolean  @default(true)
+  last_updated   DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  pharmacies pharmacies @relation(fields: [pharmacy_id], references: [id], map: "fk_inventory_pharmacy", onDelete: Cascade)
+  medicines  medicines  @relation(fields: [medicine_id], references: [id], map: "fk_inventory_medicine", onDelete: Cascade)
+
+  @@unique([pharmacy_id, medicine_id])
+  @@index([medicine_id], map: "idx_inventory_medicine")
+}
+
+model medicine_reservations {
+  id           String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patient_id   String                    @db.Uuid
+  pharmacy_id  String                    @db.Uuid
+  medicine_id  String                    @db.Uuid
+  quantity     Int
+  status       reservation_status_enum   @default(PENDING)
+  pickup_code  String                    @db.VarChar(10)
+  created_at   DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime                  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  patients   patients   @relation(fields: [patient_id], references: [id], map: "fk_reservation_patient")
+  pharmacies pharmacies @relation(fields: [pharmacy_id], references: [id], map: "fk_reservation_pharmacy")
+  medicines  medicines  @relation(fields: [medicine_id], references: [id], map: "fk_reservation_medicine")
+
+  @@index([patient_id], map: "idx_reservations_patient")
+  @@index([pharmacy_id], map: "idx_reservations_pharmacy")
 }
 
 enum account_status_enum {
@@ -529,6 +688,13 @@ enum record_access_action_enum {
   DOWNLOAD
   SHARE
   DELETE
+}
+
+enum reservation_status_enum {
+  PENDING
+  READY
+  COLLECTED
+  CANCELLED
 }
 
 enum record_type_enum {
